@@ -1,5 +1,6 @@
 use std::env;
 
+pub mod common;
 mod join;
 mod server;
 
