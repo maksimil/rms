@@ -1,4 +1,4 @@
-use crate::common::{sleep, MESSAGE_SIZE};
+use crate::common::{sleep, MESSAGE_SIZE, NAME_SIZE};
 use std::io::{ErrorKind, Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc;
@@ -22,25 +22,51 @@ pub fn start_server(port: &str) {
             let tx = tx.clone();
             clients.push(socket.try_clone().expect("failed to clone client"));
 
-            thread::spawn(move || loop {
-                let mut buff = vec![0; MESSAGE_SIZE];
+            thread::spawn(move || {
+                // getting name
+                let name = loop {
+                    let mut buff = vec![0; NAME_SIZE];
 
-                match socket.read_exact(&mut buff) {
-                    Ok(_) => {
-                        let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
-                        let msg = String::from_utf8(msg).expect("Invalid utf8 message");
+                    match socket.read_exact(&mut buff) {
+                        Ok(_) => {
+                            let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
+                            let msg = String::from_utf8(msg).expect("Invalid utf8 message");
 
-                        println!("{}: {}", addr, msg);
-                        tx.send(msg).expect("failed to send msg to rx");
+                            println!("{} joined with name {}", addr, msg);
+
+                            break Some(msg);
+                        }
+                        Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
+                        Err(_) => {
+                            println!("Closing connectioin with: {}", addr);
+                            break None;
+                        }
                     }
-                    Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
-                    Err(_) => {
-                        println!("Closing connection with: {}", addr);
-                        break;
-                    }
+
+                    sleep(100);
                 }
+                .expect("Failed to get name");
+                // getting messages
+                loop {
+                    let mut buff = vec![0; MESSAGE_SIZE];
 
-                sleep(100);
+                    match socket.read_exact(&mut buff) {
+                        Ok(_) => {
+                            let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
+                            let msg = String::from_utf8(msg).expect("Invalid utf8 message");
+
+                            println!("{}: {}", addr, msg);
+                            tx.send(msg).expect("failed to send msg to rx");
+                        }
+                        Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
+                        Err(_) => {
+                            println!("Closing connection with: {}", addr);
+                            break;
+                        }
+                    }
+
+                    sleep(100);
+                }
             });
         }
 

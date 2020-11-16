@@ -1,4 +1,4 @@
-use crate::common::{sleep, MESSAGE_SIZE};
+use crate::common::{sleep, MESSAGE_SIZE, NAME_SIZE};
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::sync::mpsc::{self, TryRecvError};
@@ -11,6 +11,16 @@ pub fn join_server(port: &str) {
     client
         .set_nonblocking(true)
         .expect("failed to initiate non-blocking");
+
+    println!("Name: ");
+    let mut buff = String::new();
+    io::stdin()
+        .read_line(&mut buff)
+        .expect("reading from stdin failed");
+    let mut name_msg = buff.into_bytes();
+    name_msg.resize(NAME_SIZE, 0);
+
+    client.write_all(&name_msg);
 
     let (tx, rx) = mpsc::channel::<String>();
 
