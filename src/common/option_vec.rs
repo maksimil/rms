@@ -59,4 +59,14 @@ impl<T> OptionVec<T> {
         let i = self._binary_search(id);
         self.data[i].1 = None;
     }
+
+    pub fn values(&self) -> Vec<&T> {
+        self.data
+            .iter()
+            .filter_map(|cell| match cell {
+                (_, None) => None,
+                (_, Some(ref e)) => Some(e),
+            })
+            .collect()
+    }
 }
