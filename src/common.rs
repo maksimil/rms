@@ -1,6 +1,7 @@
 use std::thread;
 
 pub mod option_vec;
+pub mod roll;
 
 pub const MESSAGE_SIZE: usize = 128;
 pub const NAME_SIZE: usize = 32;

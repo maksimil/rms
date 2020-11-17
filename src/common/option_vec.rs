@@ -1,6 +1,5 @@
 type Cell<T> = (usize, Option<T>);
 
-#[derive(Debug)]
 pub struct OptionVec<T> {
     data: Vec<Cell<T>>,
     lastid: usize,
