@@ -1,5 +1,8 @@
+type Cell<T> = (usize, Option<T>);
+
+#[derive(Debug)]
 pub struct OptionVec<T> {
-    data: Vec<(usize, Option<T>)>,
+    data: Vec<Cell<T>>,
     lastid: usize,
 }
 
@@ -27,5 +30,34 @@ impl<T> OptionVec<T> {
             })
             .collect();
         self
+    }
+
+    fn _binary_search(&self, id: usize) -> usize {
+        let mut l = 0;
+        let mut r = self.data.len();
+
+        while r - l > 1 {
+            let m = (l + r) / 2;
+            if self.data[m].0 <= id {
+                l = m;
+            } else {
+                r = m;
+            }
+        }
+
+        return l;
+    }
+
+    pub fn get_element(&self, id: usize) -> Option<&T> {
+        let i = self._binary_search(id);
+        match self.data[i] {
+            (uid, Some(ref e)) if uid == id => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn remove_element(&mut self, id: usize) {
+        let i = self._binary_search(id);
+        self.data[i].1 = None;
     }
 }
