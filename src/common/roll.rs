@@ -1,13 +1,10 @@
-use std::fmt::Debug;
-
-#[derive(Debug)]
 pub struct Roll<T> {
     tail: usize,
     size: usize,
     data: Vec<T>,
 }
 
-impl<T: Debug> Roll<T> {
+impl<T> Roll<T> {
     pub fn new(size: usize) -> Roll<T> {
         Roll {
             tail: 0,
@@ -22,12 +19,18 @@ impl<T: Debug> Roll<T> {
         } else {
             self.data[self.tail] = e;
         }
-        self.tail = self.head();
-        print!("{:?} ", self);
-        println!("{:?}", self.head());
+        self.tail = (self.tail + 1) % self.size;
     }
 
-    pub fn head(&self) -> usize {
-        (self.tail + 1) % self.data.len()
+    pub fn values<'a>(&'a self) -> Vec<&'a T> {
+        let mut refs: Vec<&'a T> = Vec::with_capacity(self.data.len());
+        let mut i = self.tail;
+
+        while refs.len() < self.data.len() {
+            refs.push(&self.data[i]);
+            i = (i + 1) % self.data.len();
+        }
+
+        refs
     }
 }
