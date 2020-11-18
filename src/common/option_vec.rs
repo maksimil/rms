@@ -1,7 +1,7 @@
 type Cell<T> = (usize, Option<T>);
 
 pub struct OptionVec<T> {
-    data: Vec<Cell<T>>,
+    pub data: Vec<Cell<T>>,
     lastid: usize,
 }
 
@@ -19,16 +19,16 @@ impl<T> OptionVec<T> {
         self.lastid
     }
 
-    pub fn garbage_collect(mut self) -> OptionVec<T> {
-        self.data = self
-            .data
-            .into_iter()
-            .filter_map(|cell| match cell {
-                (_, None) => None,
-                (_, Some(_)) => Some(cell),
-            })
-            .collect();
-        self
+    pub fn garbage_collect(&mut self) {
+        let mut i = 0;
+        for j in 0..self.data.len() {
+            if let (_, Some(_)) = self.data[j] {
+                self.data.swap(i, j);
+                i += 1;
+            }
+        }
+
+        self.data.truncate(i);
     }
 
     fn _binary_search(&self, id: usize) -> usize {
