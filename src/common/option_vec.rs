@@ -1,3 +1,5 @@
+use std::mem::replace;
+
 type Cell<T> = (usize, Option<T>);
 
 pub struct OptionVec<T> {
@@ -16,7 +18,7 @@ impl<T> OptionVec<T> {
     pub fn push(&mut self, e: T) -> usize {
         self.data.push((self.lastid, Some(e)));
         self.lastid += 1;
-        self.lastid
+        self.lastid - 1
     }
 
     pub fn garbage_collect(&mut self) {
@@ -54,10 +56,17 @@ impl<T> OptionVec<T> {
             _ => None,
         }
     }
-
-    pub fn remove_element(&mut self, id: usize) {
+    pub fn get_element_mut(&mut self, id: usize) -> Option<&mut T> {
         let i = self._binary_search(id);
-        self.data[i].1 = None;
+        match self.data[i] {
+            (uid, Some(ref mut e)) if uid == id => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn remove_element(&mut self, id: usize) -> Option<T> {
+        let i = self._binary_search(id);
+        replace(&mut self.data[i].1, None)
     }
 
     pub fn values(&self) -> Vec<&T> {
@@ -68,5 +77,15 @@ impl<T> OptionVec<T> {
                 (_, Some(ref e)) => Some(e),
             })
             .collect()
+    }
+
+    pub fn foreach<F: Fn(&mut T) -> bool>(&mut self, func: F) {
+        for i in 0..self.data.len() {
+            if let Some(ref mut v) = self.data[i].1 {
+                if !func(v) {
+                    self.data[i].1 = None;
+                }
+            }
+        }
     }
 }

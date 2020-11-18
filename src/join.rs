@@ -17,7 +17,7 @@ pub fn join_server(port: &str) {
     io::stdin()
         .read_line(&mut buff)
         .expect("reading from stdin failed");
-    let mut name_msg = buff.into_bytes();
+    let mut name_msg = String::from(buff.trim()).into_bytes();
     name_msg.resize(NAME_SIZE, 0);
 
     client.write_all(&name_msg);

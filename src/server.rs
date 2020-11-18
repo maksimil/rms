@@ -1,8 +1,33 @@
-use crate::common::{sleep, MESSAGE_SIZE, NAME_SIZE};
-use std::io::{ErrorKind, Read, Write};
-use std::net::TcpListener;
+use crate::common::{
+    option_vec::OptionVec, read_socket_data, roll::Roll, sleep, MESSAGE_COUNT, MESSAGE_SIZE,
+    NAME_SIZE,
+};
+use std::io::{ErrorKind, Write};
+use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc;
 use std::thread;
+
+struct User {
+    name: String,
+    socket: TcpStream,
+}
+
+struct Message {
+    uid: usize,
+    text: String,
+}
+
+enum ServerMessage {
+    SetName(usize, String),
+    SendMessage(usize, String),
+    Leave(usize),
+}
+
+use ServerMessage::*;
+
+const CLIENT_UID_ERROR: &str = "Client was not found by uid";
+const RX_MESSAGE_ERROR: &str = "Failed to send message to rx";
+const UTF8_ERR: &str = "Failed to convert u8 to utf8";
 
 pub fn start_server(port: &str) {
     println!("Starting server at {}...", port);
@@ -12,76 +37,93 @@ pub fn start_server(port: &str) {
         .set_nonblocking(true)
         .expect("Failed to initialize nonblocking");
 
-    let mut clients = vec![];
-    let (tx, rx) = mpsc::channel::<String>();
+    let mut clients: OptionVec<User> = OptionVec::new();
+    let mut messages: Roll<Message> = Roll::new(MESSAGE_COUNT);
+    let (tx, rx) = mpsc::channel::<ServerMessage>();
 
     loop {
         if let Ok((mut socket, addr)) = server.accept() {
-            println!("Client {} connected", addr);
+            println!("Client on {} connected", addr);
 
             let tx = tx.clone();
-            clients.push(socket.try_clone().expect("failed to clone client"));
+            let uid = clients.push(User {
+                name: String::with_capacity(NAME_SIZE),
+                socket: socket.try_clone().expect("Failed to clone client"),
+            });
 
-            thread::spawn(move || {
-                // getting name
-                let name = loop {
-                    let mut buff = vec![0; NAME_SIZE];
-
-                    match socket.read_exact(&mut buff) {
-                        Ok(_) => {
-                            let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
-                            let msg = String::from_utf8(msg).expect("Invalid utf8 message");
-
-                            println!("{} joined with name {}", addr, msg);
-
-                            break Some(msg);
+            thread::spawn(move || 'thread: loop {
+                {
+                    // getting name
+                    loop {
+                        match read_socket_data(&mut socket, NAME_SIZE, 0) {
+                            Ok(buff) => {
+                                tx.send(SetName(uid, String::from_utf8(buff).expect(UTF8_ERR)))
+                                    .expect(RX_MESSAGE_ERROR);
+                                break;
+                            }
+                            Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                            Err(_) => {
+                                tx.send(Leave(uid)).expect(RX_MESSAGE_ERROR);
+                                break 'thread;
+                            }
                         }
-                        Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
-                        Err(_) => {
-                            println!("Closing connectioin with: {}", addr);
-                            break None;
-                        }
+
+                        sleep(100);
                     }
-
-                    sleep(100);
-                }
-                .expect("Failed to get name");
-                // getting messages
-                loop {
-                    let mut buff = vec![0; MESSAGE_SIZE];
-
-                    match socket.read_exact(&mut buff) {
-                        Ok(_) => {
-                            let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
-                            let msg = String::from_utf8(msg).expect("Invalid utf8 message");
-
-                            println!("{}: {}", addr, msg);
-                            tx.send(msg).expect("failed to send msg to rx");
+                    // getting messages
+                    loop {
+                        match read_socket_data(&mut socket, MESSAGE_SIZE, 0) {
+                            Ok(buff) => {
+                                tx.send(SendMessage(uid, String::from_utf8(buff).expect(UTF8_ERR)))
+                                    .expect(RX_MESSAGE_ERROR);
+                            }
+                            Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
+                            Err(_) => {
+                                tx.send(Leave(uid)).expect(RX_MESSAGE_ERROR);
+                                break 'thread;
+                            }
                         }
-                        Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
-                        Err(_) => {
-                            println!("Closing connection with: {}", addr);
-                            break;
-                        }
+
+                        sleep(100);
                     }
-
-                    sleep(100);
                 }
             });
         }
 
-        if let Ok(msg) = rx.try_recv() {
-            clients = clients
-                .into_iter()
-                .filter_map(|mut socket| {
-                    let mut buff = msg.clone().into_bytes();
-                    buff.resize(MESSAGE_SIZE, 0);
+        let mut shouldupdate = false;
 
-                    socket.write_all(&buff).map(|_| socket).ok()
-                })
-                .collect::<Vec<_>>();
+        for message in rx.try_iter() {
+            shouldupdate = true;
+            match message {
+                SetName(id, name) => {
+                    println!("Name set to {}", name);
+                    clients.get_element_mut(id).expect(CLIENT_UID_ERROR).name = name;
+                }
+                SendMessage(uid, text) => {
+                    println!(
+                        "{}: {}",
+                        clients.get_element(uid).expect(CLIENT_UID_ERROR).name,
+                        text
+                    );
+                    messages.push(Message { uid, text });
+                }
+                Leave(id) => {
+                    println!(
+                        "Closing connection with {}",
+                        clients.remove_element(id).expect(CLIENT_UID_ERROR).name
+                    );
+                    clients.garbage_collect();
+                }
+            }
         }
-
+        if shouldupdate {
+            // boilerplate
+            let buff = vec![1; MESSAGE_SIZE];
+            clients.foreach(|user| match user.socket.write_all(&buff) {
+                Ok(_) => true,
+                Err(_) => false,
+            });
+        }
         sleep(100);
     }
 }
