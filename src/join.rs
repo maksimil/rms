@@ -1,27 +1,31 @@
-use crate::common::{sleep, MESSAGE_SIZE, NAME_SIZE};
+use crate::common::{read_line, sleep, MESSAGE_SIZE, NAME_SIZE};
+use crossterm::{execute, style::Print};
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::sync::mpsc::{self, TryRecvError};
 use std::thread;
 
+const SOCKET_SEND_ERR: &str = "Failed to send to socket";
+
 pub fn join_server(port: &str) {
-    println!("Joining server at {}...", port);
+    let mut stdout = std::io::stdout();
+
+    execute!(stdout, Print(format!("Joining server at {}...\n", port)));
 
     let mut client = TcpStream::connect(port).expect("Stream failed to connect");
     client
         .set_nonblocking(true)
-        .expect("failed to initiate non-blocking");
+        .expect("Failed to initiate non-blocking");
 
-    println!("Name: ");
-    let mut buff = String::new();
-    io::stdin()
-        .read_line(&mut buff)
-        .expect("reading from stdin failed");
-    let mut name_msg = String::from(buff.trim()).into_bytes();
-    name_msg.resize(NAME_SIZE, 0);
-
-    client.write_all(&name_msg);
-
+    // name
+    {
+        execute!(stdout, Print("Name: "));
+        let mut namebuff = read_line();
+        namebuff = String::from(namebuff.trim());
+        let mut namebuff = namebuff.into_bytes();
+        namebuff.resize(NAME_SIZE, 0);
+        client.write_all(&namebuff).expect(SOCKET_SEND_ERR);
+    }
     let (tx, rx) = mpsc::channel::<String>();
 
     thread::spawn(move || loop {
