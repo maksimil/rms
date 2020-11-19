@@ -1,11 +1,14 @@
-use crate::common::{read_line, sleep, MESSAGE_SIZE, NAME_SIZE};
+use crate::common::{errors::*, read_line, read_socket_data, sleep, EOT, MESSAGE_SIZE, NAME_SIZE};
 use crossterm::{execute, style::Print};
-use std::io::{self, ErrorKind, Read, Write};
+use std::io::{ErrorKind, Write};
 use std::net::TcpStream;
-use std::sync::mpsc::{self, TryRecvError};
+use std::sync::mpsc::{self};
 use std::thread;
 
-const SOCKET_SEND_ERR: &str = "Failed to send to socket";
+enum ThreadMesssage {
+    SendMessage(String),
+}
+use ThreadMesssage::*;
 
 pub fn join_server(port: &str) {
     let mut stdout = std::io::stdout();
@@ -20,52 +23,59 @@ pub fn join_server(port: &str) {
     // name
     {
         execute!(stdout, Print("Name: "));
-        let mut namebuff = read_line();
-        namebuff = String::from(namebuff.trim());
-        let mut namebuff = namebuff.into_bytes();
+        let mut namebuff = read_line().into_bytes();
         namebuff.resize(NAME_SIZE, 0);
-        client.write_all(&namebuff).expect(SOCKET_SEND_ERR);
+        client.write_all(&namebuff).expect(RX_MESSAGE_ERROR);
     }
-    let (tx, rx) = mpsc::channel::<String>();
+    let (tx, rx) = mpsc::channel::<ThreadMesssage>();
+    let (txl, rxl) = mpsc::channel::<()>();
 
-    thread::spawn(move || loop {
-        let mut buff = vec![0; MESSAGE_SIZE];
-        match client.read_exact(&mut buff) {
-            Ok(_) => {
-                let msg = buff.into_iter().take_while(|&x| x != 0).collect::<Vec<_>>();
-                println!("message recv {:?}", msg);
+    // socket
+    {
+        let txl = txl.clone();
+        thread::spawn(move || 'thread: loop {
+            let mut stdout = std::io::stdout();
+            loop {
+                match read_socket_data(&mut client, MESSAGE_SIZE, EOT) {
+                    Ok(buff) => {
+                        execute!(stdout, Print(format!("{:?}\n", buff)));
+                    }
+                    Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                    Err(_) => {
+                        execute!(stdout, Print("Connection with server was severed"));
+                        break 'thread;
+                    }
+                }
+                for msg in rx.try_iter() {
+                    match msg {
+                        SendMessage(contents) => {
+                            let mut buff = contents.into_bytes();
+                            buff.resize(MESSAGE_SIZE, 0);
+                            if let Err(_) = client.write_all(&buff) {
+                                txl.send(()).expect(RX_MESSAGE_ERROR);
+                            }
+                        }
+                    }
+                }
+
+                sleep(100);
             }
-            Err(ref err) if err.kind() == ErrorKind::WouldBlock => (),
-            Err(_) => {
-                println!("connection with server was severed");
-                break;
-            }
-        }
-
-        match rx.try_recv() {
-            Ok(msg) => {
-                let mut buff = msg.clone().into_bytes();
-                buff.resize(MESSAGE_SIZE, 0);
-                client.write_all(&buff).expect("writing to socket failed");
-                println!("message sent {:?}", msg);
-            }
-            Err(TryRecvError::Empty) => (),
-            Err(TryRecvError::Disconnected) => break,
-        }
-
-        sleep(100);
-    });
-
-    println!("Write a Message:");
-    loop {
-        let mut buff = String::new();
-        io::stdin()
-            .read_line(&mut buff)
-            .expect("reading from stdin failed");
-        let msg = buff.trim().to_string();
-        if msg == ":quit" || tx.send(msg).is_err() {
-            break;
-        }
+        });
     }
-    println!("bye bye!");
+
+    // user input
+    {
+        // let txl = txl.clone();
+        thread::spawn(move || loop {
+            let msg = read_line();
+            if msg.as_str() == ":quit" {
+                txl.send(()).expect(RX_MESSAGE_ERROR);
+            }
+            tx.send(SendMessage(msg)).expect(RX_MESSAGE_ERROR);
+        });
+    }
+
+    rxl.recv().expect("Failed to recieve leave message");
+
+    execute!(stdout, Print("Closing rms"));
 }

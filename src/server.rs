@@ -1,6 +1,6 @@
 use crate::common::{
-    option_vec::OptionVec, read_socket_data, roll::Roll, sleep, MESSAGE_COUNT, MESSAGE_SIZE,
-    NAME_SIZE,
+    errors::*, option_vec::OptionVec, read_socket_data, roll::Roll, sleep, MESSAGE_COUNT,
+    MESSAGE_SIZE, NAME_SIZE,
 };
 use std::io::{ErrorKind, Write};
 use std::net::{TcpListener, TcpStream};
@@ -24,10 +24,6 @@ enum ServerMessage {
 }
 
 use ServerMessage::*;
-
-const CLIENT_UID_ERROR: &str = "Client was not found by uid";
-const RX_MESSAGE_ERROR: &str = "Failed to send message to rx";
-const UTF8_ERR: &str = "Failed to convert u8 to utf8";
 
 pub fn start_server(port: &str) {
     println!("Starting server at {}...", port);
