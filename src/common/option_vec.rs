@@ -69,23 +69,23 @@ impl<T> OptionVec<T> {
         replace(&mut self.data[i].1, None)
     }
 
-    pub fn values(&self) -> Vec<&T> {
+    pub fn values(&self) -> Vec<(usize, &T)> {
         self.data
             .iter()
             .filter_map(|cell| match cell {
                 (_, None) => None,
-                (_, Some(ref e)) => Some(e),
+                (id, Some(ref e)) => Some((id.clone(), e)),
             })
             .collect()
     }
 
-    pub fn foreach<F: Fn(&mut T) -> bool>(&mut self, func: F) {
-        for i in 0..self.data.len() {
-            if let Some(ref mut v) = self.data[i].1 {
-                if !func(v) {
-                    self.data[i].1 = None;
-                }
-            }
-        }
+    pub fn values_mut(&mut self) -> Vec<(usize, &mut T)> {
+        self.data
+            .iter_mut()
+            .filter_map(|cell| match cell {
+                (_, None) => None,
+                (id, Some(ref mut e)) => Some((id.clone(), e)),
+            })
+            .collect()
     }
 }

@@ -112,17 +112,18 @@ pub fn start_server(port: &str) {
                         "Closing connection with {}",
                         clients.remove_element(id).expect(CLIENT_UID_ERROR).name
                     );
-                    clients.garbage_collect();
                 }
             }
+            clients.garbage_collect();
         }
         if shouldupdate {
             // boilerplate
             let buff = vec![1; MESSAGE_SIZE];
-            clients.foreach(|user| match user.socket.write_all(&buff) {
-                Ok(_) => true,
-                Err(_) => false,
-            });
+            for (uid, user) in clients.values_mut().into_iter() {
+                if let Err(_) = user.socket.write_all(&buff) {
+                    tx.send(Leave(uid)).expect(RX_MESSAGE_ERROR);
+                }
+            }
         }
         sleep(100);
     }
