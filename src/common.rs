@@ -45,3 +45,22 @@ pub fn read_line() -> String {
     std::io::stdin().read_line(&mut buff).expect(INPUT_FAIL);
     String::from(buff.trim())
 }
+
+pub fn first_slice<'a, T: PartialEq>(a: &'a [T], delimeter: &T) -> &'a [T] {
+    let mut i = 0;
+    while i < a.len() && &a[i] != delimeter {
+        i += 1;
+    }
+    &a[0..i]
+}
+
+pub fn slices<'a, T: PartialEq>(a: &'a [T], delimeter: &T) -> Vec<&'a [T]> {
+    let mut rslices = Vec::new();
+    let mut c = a;
+    while c.len() > 0 {
+        let slice = first_slice(c, delimeter);
+        rslices.push(slice);
+        c = &c[slice.len() + 1..];
+    }
+    rslices
+}

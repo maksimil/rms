@@ -1,5 +1,5 @@
 use crate::common::{
-    errors::*, option_vec::OptionVec, read_socket_data, roll::Roll, sleep, MESSAGE_COUNT,
+    errors::*, option_vec::OptionVec, read_socket_data, roll::Roll, sleep, EOT, MESSAGE_COUNT,
     MESSAGE_SIZE, NAME_SIZE, TRANSMISSION_SIZE,
 };
 use std::io::{ErrorKind, Write};
@@ -113,8 +113,20 @@ pub fn start_server(port: &str) {
             clients.garbage_collect();
         }
         if shouldupdate {
-            // boilerplate
-            let buff = vec![1; TRANSMISSION_SIZE];
+            let mut buff: Vec<u8> = Vec::with_capacity(TRANSMISSION_SIZE);
+            for Message { uid, text } in messages.values().into_iter() {
+                let mut namebuff = match clients.get_element(uid.clone()) {
+                    Some(user) => user.name.clone(),
+                    None => String::from("<left>"),
+                }
+                .into_bytes();
+                namebuff.push(0);
+                let mut textbuff = text.clone().into_bytes();
+                textbuff.push(0);
+                buff.append(&mut namebuff);
+                buff.append(&mut textbuff);
+            }
+            buff.resize(TRANSMISSION_SIZE, EOT);
             for (uid, user) in clients.values_mut().into_iter() {
                 if let Err(_) = user.socket.write_all(&buff) {
                     tx.send(Leave(uid)).expect(RX_MESSAGE_ERROR);

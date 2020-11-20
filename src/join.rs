@@ -1,5 +1,6 @@
 use crate::common::{
-    errors::*, read_line, read_socket_data, sleep, EOT, MESSAGE_SIZE, NAME_SIZE, TRANSMISSION_SIZE,
+    errors::*, read_line, read_socket_data, sleep, slices, EOT, MESSAGE_SIZE, NAME_SIZE,
+    TRANSMISSION_SIZE,
 };
 use crossterm::{execute, style::Print};
 use std::io::{ErrorKind, Write};
@@ -11,6 +12,12 @@ enum ThreadMesssage {
     SendMessage(String),
 }
 use ThreadMesssage::*;
+
+#[derive(Debug)]
+struct Message {
+    name: String,
+    text: String,
+}
 
 pub fn join_server(port: &str) {
     let mut stdout = std::io::stdout();
@@ -40,7 +47,16 @@ pub fn join_server(port: &str) {
             loop {
                 match read_socket_data(&mut client, TRANSMISSION_SIZE, EOT) {
                     Ok(buff) => {
-                        execute!(stdout, Print(format!("{:?}\n", buff)));
+                        let info = slices(&buff, &0);
+                        let mut messages: Vec<Message> = Vec::with_capacity(info.len() / 2);
+                        for i in 0..info.len() / 2 {
+                            messages.push(Message {
+                                name: String::from_utf8(Vec::from(info[2 * i])).expect(UTF8_ERR),
+                                text: String::from_utf8(Vec::from(info[2 * i + 1]))
+                                    .expect(UTF8_ERR),
+                            })
+                        }
+                        println!("{:?}", messages);
                     }
                     Err(e) if e.kind() == ErrorKind::WouldBlock => {}
                     Err(_) => {
