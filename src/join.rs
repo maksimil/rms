@@ -1,4 +1,6 @@
-use crate::common::{errors::*, read_line, read_socket_data, sleep, EOT, MESSAGE_SIZE, NAME_SIZE};
+use crate::common::{
+    errors::*, read_line, read_socket_data, sleep, EOT, MESSAGE_SIZE, NAME_SIZE, TRANSMISSION_SIZE,
+};
 use crossterm::{execute, style::Print};
 use std::io::{ErrorKind, Write};
 use std::net::TcpStream;
@@ -36,7 +38,7 @@ pub fn join_server(port: &str) {
         thread::spawn(move || 'thread: loop {
             let mut stdout = std::io::stdout();
             loop {
-                match read_socket_data(&mut client, MESSAGE_SIZE, EOT) {
+                match read_socket_data(&mut client, TRANSMISSION_SIZE, EOT) {
                     Ok(buff) => {
                         execute!(stdout, Print(format!("{:?}\n", buff)));
                     }

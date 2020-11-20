@@ -50,23 +50,35 @@ impl<T> OptionVec<T> {
     }
 
     pub fn get_element(&self, id: usize) -> Option<&T> {
-        let i = self._binary_search(id);
-        match self.data[i] {
-            (uid, Some(ref e)) if uid == id => Some(e),
-            _ => None,
+        if self.data.len() == 0 {
+            None
+        } else {
+            let i = self._binary_search(id);
+            match self.data[i] {
+                (uid, Some(ref e)) if uid == id => Some(e),
+                _ => None,
+            }
         }
     }
     pub fn get_element_mut(&mut self, id: usize) -> Option<&mut T> {
-        let i = self._binary_search(id);
-        match self.data[i] {
-            (uid, Some(ref mut e)) if uid == id => Some(e),
-            _ => None,
+        if self.data.len() == 0 {
+            None
+        } else {
+            let i = self._binary_search(id);
+            match self.data[i] {
+                (uid, Some(ref mut e)) if uid == id => Some(e),
+                _ => None,
+            }
         }
     }
 
     pub fn remove_element(&mut self, id: usize) -> Option<T> {
-        let i = self._binary_search(id);
-        replace(&mut self.data[i].1, None)
+        if self.data.len() == 0 {
+            None
+        } else {
+            let i = self._binary_search(id);
+            replace(&mut self.data[i].1, None)
+        }
     }
 
     pub fn values(&self) -> Vec<(usize, &T)> {

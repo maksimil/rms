@@ -1,6 +1,6 @@
 use crate::common::{
     errors::*, option_vec::OptionVec, read_socket_data, roll::Roll, sleep, MESSAGE_COUNT,
-    MESSAGE_SIZE, NAME_SIZE,
+    MESSAGE_SIZE, NAME_SIZE, TRANSMISSION_SIZE,
 };
 use std::io::{ErrorKind, Write};
 use std::net::{TcpListener, TcpStream};
@@ -114,7 +114,7 @@ pub fn start_server(port: &str) {
         }
         if shouldupdate {
             // boilerplate
-            let buff = vec![1; MESSAGE_SIZE];
+            let buff = vec![1; TRANSMISSION_SIZE];
             for (uid, user) in clients.values_mut().into_iter() {
                 if let Err(_) = user.socket.write_all(&buff) {
                     tx.send(Leave(uid)).expect(RX_MESSAGE_ERROR);
