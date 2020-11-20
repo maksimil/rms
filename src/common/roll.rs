@@ -23,14 +23,18 @@ impl<T> Roll<T> {
     }
 
     pub fn values<'a>(&'a self) -> Vec<&'a T> {
-        let mut refs: Vec<&'a T> = Vec::with_capacity(self.data.len());
-        let mut i = self.tail;
+        if self.data.len() == 0 {
+            Vec::new()
+        } else {
+            let mut refs: Vec<&'a T> = Vec::with_capacity(self.data.len());
+            let mut i = self.tail % self.data.len();
 
-        while refs.len() < self.data.len() {
-            refs.push(&self.data[i]);
-            i = (i + 1) % self.data.len();
+            while refs.len() < self.data.len() {
+                refs.push(&self.data[i]);
+                i = (i + 1) % self.data.len();
+            }
+
+            refs
         }
-
-        refs
     }
 }
