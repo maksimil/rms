@@ -2,16 +2,15 @@ use crate::common::{
     errors::*, read_line, read_socket_data, sleep, slices, EOT, MESSAGE_SIZE, NAME_SIZE,
     TRANSMISSION_SIZE,
 };
-use crossterm::{execute, style::Print};
-use std::io::{ErrorKind, Write};
+use crossterm::{
+    cursor::MoveTo,
+    event::{poll, read, Event, KeyCode, KeyEvent, KeyModifiers},
+    execute,
+    style::Print,
+    terminal::{Clear, ClearType},
+};
+use std::io::{stdout, ErrorKind, Write};
 use std::net::TcpStream;
-use std::sync::mpsc::{self};
-use std::thread;
-
-enum ThreadMesssage {
-    SendMessage(String),
-}
-use ThreadMesssage::*;
 
 #[derive(Debug)]
 struct Message {
@@ -20,9 +19,7 @@ struct Message {
 }
 
 pub fn join_server(port: &str) {
-    let mut stdout = std::io::stdout();
-
-    execute!(stdout, Print(format!("Joining server at {}...\n", port)));
+    execute!(stdout(), Print(format!("Joining server at {}...\n", port)));
 
     let mut client = TcpStream::connect(port).expect("Stream failed to connect");
     client
@@ -30,70 +27,111 @@ pub fn join_server(port: &str) {
         .expect("Failed to initiate non-blocking");
 
     // name
-    {
-        execute!(stdout, Print("Name: "));
-        let mut namebuff = read_line().into_bytes();
-        namebuff.resize(NAME_SIZE, 0);
-        client.write_all(&namebuff).expect(RX_MESSAGE_ERROR);
-    }
-    let (tx, rx) = mpsc::channel::<ThreadMesssage>();
-    let (txl, rxl) = mpsc::channel::<()>();
+    'main: loop {
+        {
+            execute!(
+                stdout(),
+                Clear(ClearType::All),
+                MoveTo(0, 0),
+                Print("Name: ")
+            );
+            let mut namebuff = read_line().into_bytes();
+            namebuff.resize(NAME_SIZE, 0);
+            if let Err(_) = client.write_all(&namebuff) {
+                execute!(stdout(), Print("Connection with server was severed"));
+                break 'main;
+            }
+            execute!(stdout(), Clear(ClearType::All), MoveTo(0, 0));
+        }
 
-    // socket
-    {
-        let txl = txl.clone();
-        thread::spawn(move || 'thread: loop {
-            let mut stdout = std::io::stdout();
-            loop {
-                match read_socket_data(&mut client, TRANSMISSION_SIZE, EOT) {
-                    Ok(buff) => {
-                        let info = slices(&buff, &0);
-                        let mut messages: Vec<Message> = Vec::with_capacity(info.len() / 2);
-                        for i in 0..info.len() / 2 {
-                            messages.push(Message {
-                                name: String::from_utf8(Vec::from(info[2 * i])).expect(UTF8_ERR),
-                                text: String::from_utf8(Vec::from(info[2 * i + 1]))
-                                    .expect(UTF8_ERR),
-                            })
-                        }
-                        println!("{:?}", messages);
-                    }
-                    Err(e) if e.kind() == ErrorKind::WouldBlock => {}
-                    Err(_) => {
-                        execute!(stdout, Print("Connection with server was severed"));
-                        break 'thread;
+        let mut message = String::new();
+        let mut sendmessage = false;
+        let mut messages: Vec<Message> = Vec::new();
+        let mut shouldrerender = true;
+        loop {
+            match read_socket_data(&mut client, TRANSMISSION_SIZE, EOT) {
+                Ok(buff) => {
+                    let info = slices(&buff, &0);
+                    shouldrerender = true;
+                    messages = Vec::with_capacity(info.len() / 2);
+                    for i in 0..info.len() / 2 {
+                        messages.push(Message {
+                            name: String::from_utf8(Vec::from(info[2 * i])).expect(UTF8_ERR),
+                            text: String::from_utf8(Vec::from(info[2 * i + 1])).expect(UTF8_ERR),
+                        })
                     }
                 }
-                for msg in rx.try_iter() {
-                    match msg {
-                        SendMessage(contents) => {
-                            let mut buff = contents.into_bytes();
-                            buff.resize(MESSAGE_SIZE, 0);
-                            if let Err(_) = client.write_all(&buff) {
-                                txl.send(()).expect(RX_MESSAGE_ERROR);
-                            }
-                        }
-                    }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(_) => {
+                    execute!(stdout(), Print("Connection with server was severed"));
+                    break 'main;
                 }
-
-                sleep(100);
             }
-        });
+
+            if shouldrerender {
+                shouldrerender = false;
+
+                execute!(stdout(), Clear(ClearType::All), MoveTo(0, 0));
+
+                for msg in messages.iter() {
+                    execute!(
+                        stdout(),
+                        Print(format!("{} :: {}\n", msg.name.as_str(), msg.text.as_str()))
+                    );
+                }
+                execute!(stdout(), Print(format!("{}", message.as_str())));
+            }
+
+            if sendmessage {
+                sendmessage = false;
+                if message.as_str() == ":quit" {
+                    break 'main;
+                }
+                let mut msgbuff = message.into_bytes();
+                msgbuff.resize(MESSAGE_SIZE, 0);
+                if let Err(_) = client.write_all(&msgbuff) {
+                    execute!(stdout(), Print("Connection with server was severed"));
+                    break 'main;
+                }
+                message = String::new();
+            }
+
+            while poll(std::time::Duration::from_secs(0)).expect(CROSSTERM_EVENT_ERR) {
+                match read().expect(CROSSTERM_EVENT_ERR) {
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Char(c),
+                        modifiers: KeyModifiers::NONE,
+                    }) => {
+                        message.push(c);
+                        shouldrerender = true;
+                    }
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Char(c),
+                        modifiers: KeyModifiers::SHIFT,
+                    }) => {
+                        message.push_str(c.to_uppercase().to_string().as_str());
+                        shouldrerender = true;
+                    }
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Enter,
+                        modifiers: _,
+                    }) => {
+                        sendmessage = true;
+                    }
+                    Event::Key(KeyEvent {
+                        code: KeyCode::Backspace,
+                        modifiers: _,
+                    }) => {
+                        message.pop();
+                        shouldrerender = true;
+                    }
+                    _ => (),
+                }
+            }
+
+            sleep(10);
+        }
     }
 
-    // user input
-    {
-        // let txl = txl.clone();
-        thread::spawn(move || loop {
-            let msg = read_line();
-            if msg.as_str() == ":quit" {
-                txl.send(()).expect(RX_MESSAGE_ERROR);
-            }
-            tx.send(SendMessage(msg)).expect(RX_MESSAGE_ERROR);
-        });
-    }
-
-    rxl.recv().expect("Failed to recieve leave message");
-
-    execute!(stdout, Print("Closing rms"));
+    execute!(stdout(), Clear(ClearType::All), Print("Closing rms"));
 }
